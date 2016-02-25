@@ -6,6 +6,7 @@
 # Copyright (c) 2015 by Cisco Systems, Inc.
 # All rights reserved.
 ###############################################################################
+from __future__ import print_function
 import os
 import datetime
 import subprocess
@@ -42,9 +43,9 @@ def workspace_version(workspace):
     cmd = "acme desc -workspace -short > .workspace"
     try:
         output = subprocess.check_call(cmd, stderr=subprocess.STDOUT, shell=True)
-        print output
+        print(output)
     except subprocess.CalledProcessError:
-        print "#### acme command to get workspace info failed"
+        print("#### acme command to get workspace info failed")
 
     workspace = "none"
     devline = "none"
@@ -86,9 +87,9 @@ def get_current_label(workspace):
     cmd = "acme desc -comp .acme_project -short > %s" % (tmp_file)
     try:
         output = subprocess.check_call(cmd, stderr=subprocess.STDOUT, shell=True)
-        print output
+        print(output)
     except subprocess.CalledProcessError:
-        print "#### acme command to get workspace info failed"
+        print("#### acme command to get workspace info failed")
         return "none"
 
     label_file_p = open(tmp_file, "r")
@@ -108,7 +109,7 @@ def get_current_label_from_file(location, filename):
         with  open(label_file, "r") as label_file_p:
             label = label_file_p.readline()
     except EnvironmentError:
-        print "open file %s failed" % label_file
+        print("open file %s failed" % label_file)
     return label.rstrip()
 
 def update_current_label(workspace, filename, label):
@@ -129,9 +130,9 @@ def get_bugs_info(workspace, current_label, last_label):
               (last_label, current_label, tmp_file)
     try:
         output = subprocess.check_call(cmd, stderr=subprocess.STDOUT, shell=True)
-        print output
+        print(output)
     except subprocess.CalledProcessError:
-        print "#### acme command to get workspace info failed"
+        print("#### acme command to get workspace info failed")
         return "none"
 
     for line in open(tmp_file):
@@ -142,8 +143,8 @@ def get_bugs_info(workspace, current_label, last_label):
             
     os.remove(tmp_file)
 
-    print "Current label: %s Latest Label: %s" % (current_label, last_label)
-    print bugs_info
+    print("Current label: %s Latest Label: %s" % (current_label, last_label))
+    print(bugs_info)
     return bugs_info
 
 
@@ -208,7 +209,7 @@ def patch_ws (workspace = '.'):
         try:
             subprocess.call(cmd, stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError as e:
-            print "Error: ", e
+            print("Error: ", e)
 
 def run_regression(storage, branch, email):
     '''
@@ -220,9 +221,9 @@ def run_regression(storage, branch, email):
     # Create workspace in storage area and pull the workspace
     view_tag, workspace, binos_root, ios_root, sdk_root = workspace_name(storage)
 #    if os.path.exists(workspace):
-#        print 'Workspace %s already exists' % (workspace)
+#        print('Workspace %s already exists' % (workspace))
 #        shutil.rmtree(workspace)
-#        print 'Workspace %s removed' % (workspace)
+#        print('Workspace %s removed' % (workspace))
 
 #    os.makedirs(workspace)
     os.chdir(workspace)
@@ -253,12 +254,12 @@ def run_regression(storage, branch, email):
 
 #    # Pull work space
 #    cmd = "acme nw -project %s -sb xe" % (branch)
-#    print "Executing (%s)" % (cmd)
+#    print("Executing (%s)" % (cmd))
 #    try:
 #        subprocess.check_call(
 #            cmd, stderr=subprocess.STDOUT, shell=True, env=d_env)
 #    except subprocess.CalledProcessError:
-#        print "###Error in pulling workspace"
+#        print("###Error in pulling workspace")
 #        # Send email for build failure
 #        shutil.rmtree(workspace)
 #        send_email_ws(email)
@@ -290,13 +291,13 @@ def run_regression(storage, branch, email):
     # Start the build for the x86_64_binos_root.
     # Once the binos_root is done build all ASIC builds
     cmd = "mcp_ios_precommit -- -j16 build_x86_64_binos_root"
-    print "Executing (%s)" % (cmd)
+    print("Executing (%s)" % (cmd))
     os.chdir("%s/sys" % (ios_root))
     try:
         subprocess.check_call(
             cmd, stderr=subprocess.STDOUT, shell=True, env=d_env)
     except subprocess.CalledProcessError:
-        print "###Error in building binos linkfarm"
+        print("###Error in building binos linkfarm")
         # Send email for build failure
         send_email_binos_root(email, binos_root, bugs_file)
         shutil.rmtree(workspace)
@@ -309,11 +310,11 @@ def run_regression(storage, branch, email):
              binos_root, asic, email, bugs_file)
 
         try:
-            print "Executing (%s)" % (cmd)
+            print("Executing (%s)" % (cmd))
             subprocess.check_call(
                 cmd, stderr=subprocess.STDOUT, shell=True, env=d_env)
         except subprocess.CalledProcessError:
-            print "###Error in executing regression for spectra Doppler%s (new AFD/RAL)" % (asic)
+            print("###Error in executing regression for spectra Doppler%s (new AFD/RAL)" % (asic))
             send_email_asic_build(email, binos_root, asic, bugs_file, False)
             
         continue
@@ -348,7 +349,7 @@ def main():
     if options.email:
         email = options.email
     else:
-        print 'email not specified'
+        print('email not specified')
         sys.exit(1)
 
     branch = 'macallan_dev'
@@ -358,17 +359,17 @@ def main():
     if options.storage:
         storage = options.storage
         if not os.path.exists(storage):
-            print 'Storage %s provided does not exist' % (storage)
+            print('Storage %s provided does not exist' % (storage))
             sys.exit(1)
     else:
-        print 'Storage location is not specified'
+        print('Storage location is not specified')
         sys.exit(1)
 
-    print 'Starting regression in %s in %s' % (branch, storage)
-    print 'Results will be sent to %s' % (email)
+    print('Starting regression in %s in %s' % (branch, storage))
+    print('Results will be sent to %s' % (email))
     result = run_regression(storage, branch, email)
     if not result:
-        print 'Workspace build failed'
+        print('Workspace build failed')
 
 if __name__ == '__main__':
     main()

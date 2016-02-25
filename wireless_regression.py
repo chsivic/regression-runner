@@ -18,6 +18,7 @@
 # Copyright (c) 2013-2015 by cisco Systems, Inc.
 # All rights reserved.
 ######################################################################
+from __future__ import print_function
 import os
 import sys
 import platform
@@ -32,7 +33,7 @@ import subprocess
 import datetime
 import time
 import filecmp
-from subprocess import check_output
+from subprocess import check_output, Popen
 
 regression_repo = "/auto/ecsg-paq1/sdk_regression/"
 test_runner_exe = "/ws/siche-sjc/macallan/test_runner.py"
@@ -150,7 +151,7 @@ def cleanWorkspace(env):
     try:
         output = subprocess.check_call(cleanCmd, stderr=subprocess.STDOUT, shell=True)
     except subprocess.CalledProcessError:
-        print "#### Spectra clean failed"
+        print("#### Spectra clean failed")
         sys.exit(1)
 
     # If the new code is tested we have to get rid of the linkfarm and build it again
@@ -160,7 +161,7 @@ def cleanWorkspace(env):
         try:
             output = subprocess.check_call(cleanCmd, stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError:
-            print "#### Spectra clean failed"
+            print("#### Spectra clean failed")
 
 def cleanAndBuild(env, coverage):
     binos_root, asic, new_code, no_attach, cflow = env
@@ -180,7 +181,7 @@ def cleanAndBuild(env, coverage):
     try:
         output = subprocess.check_call(buildCmd, stderr=subprocess.STDOUT, shell=True)
     except subprocess.CalledProcessError:
-        print "#### Spectra build failed"
+        print("#### Spectra build failed")
         sys.exit(1)
 
 
@@ -192,7 +193,7 @@ def updateWorkspace(binos_root):
     try:
         output = subprocess.check_call(cmd, stderr=subprocess.STDOUT, shell=True)
     except subprocess.CalledProcessError:
-        print "Workspace update failed"
+        print("Workspace update failed")
         sys.exit(1)
 
     os.chdir(binos_root)
@@ -204,7 +205,7 @@ def updateWorkspace(binos_root):
         if "Update operation type summary (count):" in line:
             merge = line.split(" ")[10]
 
-    print "Merge conflicts: %s" % (merge) 
+    print("Merge conflicts: %s" % (merge) )
     if not merge:
         conflicts = int(merge.split(':')[1])
 
@@ -250,12 +251,12 @@ def loop_utPrograms (binos_root, asic, utPrograms):
             utCmd = "%s -r %s" % (utCmd, utArgs)
         
         try:
-            print "\nExecuting (%s)" % (utCmd)
+            print("\nExecuting (%s)" % (utCmd))
             output = subprocess.check_output(utCmd, stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError:
-            print "#### UT test execution failed"
+            print("#### UT test execution failed")
         else:
-            print output
+            print(output)
             test_runner_result = parse_test_runner_output(output)
 
         if not os.path.exists(logDir(binos_root) + utLogs):
@@ -266,7 +267,7 @@ def loop_utPrograms (binos_root, asic, utPrograms):
             if not os.path.isfile(path):
                 continue
             if "core" in filename.lower():
-                print "Coredump observed for the %s" % (utName)
+                print("Coredump observed for the %s" % (utName))
                 coreDump = True
 
         utResults[utName] = (runFailed, coreDump, utValgrind,
@@ -309,12 +310,16 @@ def runTest(env, tool):
 #    utResults = loop_utPrograms(binos_root, asic, utPrograms)
 
     cmd = [test_runner_exe, '-p', '-a', asic,
-        '-t', ':'.join(get_wireless_testcases()), '-r', '"TESTMODE=FEATURE"']
-    print "\nExecuting(%s)" % cmd
+        '-t', ':'.join(get_wireless_testcases()[5:8]), '-r', '"TESTMODE=FEATURE"']
+    print("\nExecuting(%s)" % cmd)
     try:
-        output = subprocess.check_output(cmd, stderr = subprocess.STDOUT)
+        output = ''
+        with Popen(cmd, stderr = subprocess.PIPE) as p:
+            for line in p.stdout:
+                print(line, end='')
+                output += line
     except subprocess.CalledProcessError as e:
-        print "#### test_runner error: %s" % e
+        print("#### test_runner error: %s" % e)
     else:
         test_runner_result = parse_test_runner_output(output)
     utResults = {t:(False, False, '', test_runner_result[t]) for t in test_runner_result.keys()}
@@ -368,7 +373,7 @@ def emailTestResults(env, tool, results, email, bugs, cdets, start_time):
     try:
         output = subprocess.check_call(cmd, stderr=subprocess.STDOUT, shell=True)
     except subprocess.CalledProcessError:
-        print "#### acme command to get workspace info failed"
+        print("#### acme command to get workspace info failed")
 
     workspace = ""
     devline = ""
@@ -525,7 +530,7 @@ def main():
 
     if options.cdets:
         cdets = options.cdets 
-        print "SDK regression results will be attached to %s" % (cdets)
+        print("SDK regression results will be attached to %s" % (cdets))
 
     if options.after_run:
         after_run = options.after_run
@@ -537,33 +542,33 @@ def main():
         try:
             binos_root = os.environ['BINOS_ROOT']
         except KeyError:
-            print "ERROR: BINOS_ROOT is not set"
+            print("ERROR: BINOS_ROOT is not set")
             sys.exit(1)
 
     if options.latest:
-        print "****************************************************************"
-        print "** !! Attention !!                                            **"
-        print "** Running with latest code could cause merge conflicts       **"
-        print "** The workspace on which the regression is run will be       **"
-        print "** affected. You need to run the regression again after       **"
-        print "** fixing the conflicts.                                      **" 
-        print "****************************************************************"
+        print("****************************************************************")
+        print("** !! Attention !!                                            **")
+        print("** Running with latest code could cause merge conflicts       **")
+        print("** The workspace on which the regression is run will be       **")
+        print("** affected. You need to run the regression again after       **")
+        print("** fixing the conflicts.                                      **" )
+        print("****************************************************************")
         try:
             resp = raw_input("Do you want to proceed [y/n] ")
         except KeyboardInterrupt:
             sys.exit(1)
         if resp.lower() in ('yes', 'y'):
             conflicts = updateWorkspace(binos_root)
-            print "Number of merge conflicts: %d" % (conflicts)
+            print("Number of merge conflicts: %d" % (conflicts))
             if conflicts >= 0:
-                print "!!! There are %d merge conflicts !!!" % (conflicts)
-                print "!!! Rerun the regression after fixing the conflicts !!!"
+                print("!!! There are %d merge conflicts !!!" % (conflicts))
+                print("!!! Rerun the regression after fixing the conflicts !!!")
 
     date = datetime.datetime.now()
 
-    print "BINOS_ROOT:", binos_root
-    print "ASIC:", asic
-    print "Email:", email
+    print("BINOS_ROOT:", binos_root)
+    print("ASIC:", asic)
+    print("Email:", email)
     sys.stdout.flush()
 
     os.chdir(binos_root)
