@@ -336,7 +336,7 @@ def run_regression(storage, branch, email):
     output = {}
     # Start the ASIC builds for the new AFD/CAD and execute the regressions
     for asic in ['CS', 'D']:
-        cmd = "%s -b %s -a Doppler%s -e %s -k %s -n -p -s -r" % \
+        cmd = "%s -b %s -a Doppler%s -e %s -k %s -n -p" % \
             (wireless_regression_exe, 
              binos_root, asic, 'siche@cisco.com', bugs_file)
 
