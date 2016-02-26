@@ -211,6 +211,36 @@ def patch_ws (workspace = '.'):
         except subprocess.CalledProcessError as e:
             print("Error: ", e)
 
+def parse_test_runner_output (output):
+    if "Results" not in output:
+        return ''
+    results = {}
+    for l in output.split('\n'):
+        if '|' in l:
+            results[l.split('|')[1].strip()] = l.split('|')[2].strip()
+
+    return results
+
+def send_email_regression_results (email, output):
+    body = ''
+    output['CS'] = parse_test_runner_output('Results' + output['CS'].split('Results')[1])
+    output['D'] = parse_test_runner_output('Results' + output['D'].split('Results')[1])
+    cs=sum(1 for res in output['CS'].values() if res == 'PASSED')
+    d=sum(1 for res in output['D'].values() if res == 'PASSED')
+    body += """
+    Summary:
+    DopplerCS: {cs}/{total}
+    DopplerD: {d}/{total}\n""".format(cs = cs, d = d, total = len(output['CS'].keys()))
+    testcases = output[output.keys()[0]].keys()
+    tbl_format = '| {:<35} | {:<25} | {:<25} |'
+    body += tbl_format.format('Testname', 'DopplerCS', 'DopplerD')+'\n'
+    body += '\n'.join([tbl_format.format(t, output['CS'][t], output['D'][t]) for t in testcases])
+
+    body += """
+    All tests were run with new code, feature mode.
+    """
+    send_email(email, "Wireless Regression Multi-Doppler Results", body)    
+
 def run_regression(storage, branch, email):
     '''
     This routine will create the workspace from latest and build the
@@ -220,12 +250,12 @@ def run_regression(storage, branch, email):
     '''
     # Create workspace in storage area and pull the workspace
     view_tag, workspace, binos_root, ios_root, sdk_root = workspace_name(storage)
-#    if os.path.exists(workspace):
-#        print('Workspace %s already exists' % (workspace))
-#        shutil.rmtree(workspace)
-#        print('Workspace %s removed' % (workspace))
+    if os.path.exists(workspace):
+        print('Workspace %s already exists' % (workspace))
+        shutil.rmtree(workspace)
+        print('Workspace %s removed' % (workspace))
 
-#    os.makedirs(workspace)
+    os.makedirs(workspace)
     os.chdir(workspace)
 
     # Set path for the BINOS build, 
@@ -252,20 +282,20 @@ def run_regression(storage, branch, email):
     d_env['BINOS_ROOT'] = os.environ['BINOS_ROOT']
     d_env['PATH'] = os.environ['PATH']
 
-#    # Pull work space
-#    cmd = "acme nw -project %s -sb xe" % (branch)
-#    print("Executing (%s)" % (cmd))
-#    try:
-#        subprocess.check_call(
-#            cmd, stderr=subprocess.STDOUT, shell=True, env=d_env)
-#    except subprocess.CalledProcessError:
-#        print("###Error in pulling workspace")
-#        # Send email for build failure
-#        shutil.rmtree(workspace)
-#        send_email_ws(email)
-#        return False
-#
-#    patch_ws(workspace)
+    # Pull work space
+    cmd = "acme nw -project %s -sb xe" % (branch)
+    print("Executing (%s)" % (cmd))
+    try:
+        subprocess.check_call(
+            cmd, stderr=subprocess.STDOUT, shell=True, env=d_env)
+    except subprocess.CalledProcessError:
+        print("###Error in pulling workspace")
+        # Send email for build failure
+        shutil.rmtree(workspace)
+        send_email_ws(email)
+        return False
+
+    patch_ws(workspace)
 
     # Create the regression workspace logs directory
     log_dir = "%s/regression/%s" % (storage, view_tag)
@@ -303,21 +333,24 @@ def run_regression(storage, branch, email):
         shutil.rmtree(workspace)
         return False
 
+    output = {}
     # Start the ASIC builds for the new AFD/CAD and execute the regressions
     for asic in ['CS', 'D']:
-        cmd = "%s -b %s -a Doppler%s -e %s -k %s -n -p" % \
+        cmd = "%s -b %s -a Doppler%s -e %s -k %s -n -p -s -r" % \
             (wireless_regression_exe, 
-             binos_root, asic, email, bugs_file)
+             binos_root, asic, 'siche@cisco.com', bugs_file)
 
         try:
             print("Executing (%s)" % (cmd))
-            subprocess.check_call(
+            output[asic] = subprocess.check_output(
                 cmd, stderr=subprocess.STDOUT, shell=True, env=d_env)
         except subprocess.CalledProcessError:
             print("###Error in executing regression for spectra Doppler%s (new AFD/RAL)" % (asic))
             send_email_asic_build(email, binos_root, asic, bugs_file, False)
             
         continue
+
+    send_email_regression_results(email, output) 
 
     update_current_label(label_dir, "last_label", current_label)
     shutil.rmtree(workspace)

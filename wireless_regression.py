@@ -304,20 +304,21 @@ def runTest(env, tool):
         shutil.rmtree(resultDir(binos_root))
     os.makedirs(resultDir(binos_root))
 
-    utPrograms = [(t,t,"TESTMODE=FEATURE",t,'','') for t in get_wireless_testcases()]
-    utPrograms = utPrograms[5:8]
+#    utPrograms = [(t,t,"TESTMODE=FEATURE",t,'','') for t in get_wireless_testcases()]
 
 #    utResults = loop_utPrograms(binos_root, asic, utPrograms)
 
     cmd = [test_runner_exe, '-p', '-a', asic,
-        '-t', ':'.join(get_wireless_testcases()[5:8]), '-r', '"TESTMODE=FEATURE"']
-    print("\nExecuting(%s)" % cmd)
+        '-t', ':'.join(get_wireless_testcases()), '-r', '"TESTMODE=FEATURE"']
+    print("\nExecuting(%s)" % ' '.join(cmd))
     try:
         output = ''
-        with Popen(cmd, stderr = subprocess.PIPE) as p:
-            for line in p.stdout:
+        p = Popen(cmd, stdout = subprocess.PIPE, bufsize=1, universal_newlines=True)
+        with p.stdout:
+            for line in iter(p.stdout.readline, b''):
                 print(line, end='')
                 output += line
+        p.wait()
     except subprocess.CalledProcessError as e:
         print("#### test_runner error: %s" % e)
     else:
@@ -393,7 +394,7 @@ def emailTestResults(env, tool, results, email, bugs, cdets, start_time):
 
 
     emailBodyText += "\nResult Directory: %s\n" % (resultDir(binos_root))
-    tbl_format = '| {:<35} | {:<15} | {:<40} |'
+    tbl_format = '\n| {:<35} | {:<15} | {:<40} |'
     tblBorder = "\n+--------------------------------+--------------+------------------------------------------+"
     cronJobText += tblBorder 
     cronJobText += tbl_format.format("TestName" , "Result", "LogFile")
