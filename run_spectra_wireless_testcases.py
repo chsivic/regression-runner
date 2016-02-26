@@ -60,8 +60,44 @@ class Workspace (object):
     def __repr__ (self) :
         return "<Workspace of branch %s at BINOS_ROOT=%s>" % (self.branch, self.binos_root)
 
+class Spectra(object):
+    ws = None
+    asic = ''
+    def __init__(self, asic, ws):
+        self.ws = ws
+        self.asic = asic
+
+    def build(self):
+        if self.ws is None or self.asic == '':
+            raise Exception('workspace not set')
+
+        binos_root = self.ws.binos_root
+        # Now build spectra
+        buildCmd = [binos_root + "/platforms/ngwc/doppler_sdk/tools/scripts/spectra_build.py", "-p",
+                    "-a", self.asic, "-b", binos_root]
+        try:
+            print("Executing (%s)" % ' '.join(buildCmd))
+            subprocess.check_call(buildCmd, shell=True)
+        except subprocess.CalledProcessError as e:
+            print("#### Spectra build failed", e.returncode)
+   
+    def clean(self):
+        if self.ws is None or self.asic == '':
+            raise Exception('workspace not set')
+
+        binos_root = self.ws.binos_root
+        buildCmd = [binos_root + "/platforms/ngwc/doppler_sdk/tools/scripts/spectra_build.py", "-p",
+                    "-a", self.asic, "-b", binos_root, '-co']
+        try:
+            subprocess.check_call(buildCmd, shell=True)
+        except subprocess.CalledProcessError as e:
+            print("#### Spectra clean failed", e.returncode)
+ 
 class RegressionRunner(object):
     ws = None
+    def __init__(self, spectras=None):
+        self.spectras = spectras
+
     def prepare(self):
         if self.ws is None:
             raise Exception('workspace not set')
@@ -70,8 +106,7 @@ class RegressionRunner(object):
         self.ws.pull()
         self.ws.build()
 
-
-if __name__ == "__main__":
+def run():
     STORAGE = '/scratch/siche'
     WS_NAME = "mac_" + datetime.datetime.now().strftime('%Y-%m-%d')
     WS_NAME = 'gogogo'
@@ -79,4 +114,10 @@ if __name__ == "__main__":
     w = Workspace(directory = "%s/%s" % (STORAGE, WS_NAME))
     r.ws = w;
     r.prepare()
-    
+    spectras = [Spectra(asic = 'DopplerD', ws = w), 
+                Spectra(asic = 'DopplerCS', ws = w)]
+    map(lambda sp: sp.build(), spectras)
+
+
+if __name__ == "__main__":
+    run()
