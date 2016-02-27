@@ -7,7 +7,7 @@ import mimetypes
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
-def find_pattern_in_dir(path, regex):
+def pattern_exists_in_dir(path, regex):
     regObj = re.compile(regex)
     for root, dirs, fnames in os.walk(path):
         for fname in fnames:
@@ -23,6 +23,8 @@ def find_files_in_dir(path, regex):
     return matched
 
 class Workspace (object):
+    ws_dir = ''
+    binos_root = ''
     def __repr__ (self) :
         return "<Workspace of branch %s at BINOS_ROOT=%s>" % (self.branch, self.binos_root)
 
@@ -53,7 +55,7 @@ class Workspace (object):
                 raise
             
     def build (self, target = 'x86_64_binos_root'):
-        if find_pattern_in_dir('%s/BUILD_LOGS/' % self.binos_root,
+        if pattern_exists_in_dir('%s/BUILD_LOGS/' % self.binos_root,
                 'SUCC.*x86_64_binos_root'):
             print('x86_64_binos_root already built')
             return
@@ -76,7 +78,7 @@ class Workspace (object):
     def get_wireless_testcases(self):
         return [w.replace('.py', '') for w in 
             find_files_in_dir(self.spectra_dir + '/scripts/test_suite/Wireless/',
-                                 '.*.py')]
+                                 '.*.py$')]
 
 class Spectra(object):
     ws = None
@@ -113,9 +115,22 @@ class Spectra(object):
  
 class RegressionRunner(object):
     ws = None
+    spectras = None
     test_runner_exe = "/ws/siche-sjc/macallan/test_runner.py"
     def __init__(self, spectras=None):
         self.spectras = spectras
+
+    def patch_ws (self, workspace = '.'):
+        os.chdir(workspace)
+        cmds = ('patch -p1 -f < /ws/siche-sjc/macallan/WiredToWirelessBridging_CS.stanley.diff',
+                'patch -p1 -f < /ws/siche-sjc/macallan/wireless_spectra.diff',
+                'patch -p1 -f < /ws/siche-sjc/macallan/spectra_scripts.diff')
+        
+        for cmd in cmds:
+            try:
+                subprocess.call(cmd, stderr=subprocess.STDOUT, shell=True)
+            except subprocess.CalledProcessError as e:
+                print("Error: ", e)
 
     def prepare_ws(self):
         if self.ws is None:
@@ -124,6 +139,9 @@ class RegressionRunner(object):
         print("Workspace: {}".format(self.ws))
         self.ws.pull()
         self.ws.build()
+        
+        self.patch_ws(self.ws.ws_dir)
+        
 
     def cleanup_results(self):
         binos_root = self.ws.binos_root
@@ -145,7 +163,7 @@ class RegressionRunner(object):
 
     def run_test(self, asic = 'DopplerD', tests = []):
         cmd = [self.test_runner_exe, '-p', '-a', asic,
-            '-t', ':'.join(tests[5:7]), '-r', '"TESTMODE=FEATURE"',
+            '-t', ':'.join(tests), '-r', '"TESTMODE=FEATURE"',
             '-b', self.ws.binos_root]
         print("\nExecuting(%s)" % ' '.join(cmd))
         try:
@@ -210,44 +228,50 @@ class Reporter (object):
             composed = outer.as_string()
             smtp_inst.sendmail(email, email, composed)
 
-         smtp_inst.quit()
+        smtp_inst.quit()
     
     def compose(self, results):
-        cs=sum(1 for res in output['CS'].values() if res == 'PASSED')
-        d=sum(1 for res in output['D'].values() if res == 'PASSED')
-        body += """
-        Summary:
-        DopplerCS: {cs}/{total}
-        DopplerD: {d}/{total}\n""".format(cs = cs, d = d, total = len(output['CS'].keys()))
-        testcases = output[output.keys()[0]].keys()
+        body = ''
+        stats = {asic:sum(1 for res in results[asic].values() if res == 'PASSED')
+            for asic in results.keys()}
+        body += "Summary:\n"
+        body += '\n'.join(
+            ["{asic}: {passed}/{total}".format(asic=asic, passed=stats[asic],
+                                               total=len(results[asic].keys()))
+            for asic in results.keys()]) + '\n'
+
+        testcases = results[results.keys()[0]].keys()
         tbl_format = '| {:<35} | {:<25} | {:<25} |'
         body += tbl_format.format('Testname', 'DopplerCS', 'DopplerD')+'\n'
-        body += '\n'.join([tbl_format.format(t, output['CS'][t], output['D'][t]) for t in testcases])
+        body += '\n'.join([tbl_format.format(t, results['DopplerCS'][t],
+                                             results['DopplerD'][t]) for t in testcases])
     
         body += """
         All tests were run with new code, feature mode.
         """
 
-
+        return body
 
 
 def run():
     STORAGE = '/scratch/siche'
     WS_NAME = "mac_" + datetime.datetime.now().strftime('%Y-%m-%d')
-    WS_NAME = 'gogogo'
     r = RegressionRunner();
     r.ws = Workspace(directory = "%s/%s" % (STORAGE, WS_NAME))
     r.prepare_ws()
 
     spectras = [Spectra(asic = 'DopplerD', ws = r.ws), 
                 Spectra(asic = 'DopplerCS', ws = r.ws)]
-#    map(lambda sp: sp.build(), spectras)
+    map(lambda sp: sp.build(), spectras)
     r.spectras = spectras
 
-    results = {asic:r.parse_test_runner_output(r.run_test(asic, r.ws.get_wireless_testcases()))
+    results = {asic:r.parse_test_runner_output(r.run_test(asic,
+                                    r.ws.get_wireless_testcases()))
         for asic in ['DopplerCS', 'DopplerD']}
 
-    r = Reporter(['siche@cisco.com'])
+    r = Reporter(emails=['siche@cisco.com'])
+    r.send_email("Wireless Regression Multi-Doppler Results",
+                 r.compose(results))
 
 if __name__ == "__main__":
     run()
