@@ -27,6 +27,7 @@ def workspace_name(storage):
     '''
     now = datetime.date.today()
     view_tag = "SDKREG_%s" % (now.strftime('%m%d%Y'))
+    view_tag = 'gogogo'
     workspace = "%s/%s" % (storage, view_tag)
     binos_root = "%s/binos" % (workspace)
     ios_root = "%s/ios" % (workspace)
@@ -250,12 +251,15 @@ def run_regression(storage, branch, email):
     '''
     # Create workspace in storage area and pull the workspace
     view_tag, workspace, binos_root, ios_root, sdk_root = workspace_name(storage)
-    if os.path.exists(workspace):
-        print('Workspace %s already exists' % (workspace))
-        shutil.rmtree(workspace)
-        print('Workspace %s removed' % (workspace))
+#    if os.path.exists(workspace):
+#        if not options.continue_run:
+#            print('Workspace %s already exists' % (workspace))
+#            shutil.rmtree(workspace)
+#            print('Workspace %s removed' % (workspace))
+#            os.makedirs(workspace)
+#    else:
+#        os.makedirs(workspace)
 
-    os.makedirs(workspace)
     os.chdir(workspace)
 
     # Set path for the BINOS build, 
@@ -282,20 +286,20 @@ def run_regression(storage, branch, email):
     d_env['BINOS_ROOT'] = os.environ['BINOS_ROOT']
     d_env['PATH'] = os.environ['PATH']
 
-    # Pull work space
-    cmd = "acme nw -project %s -sb xe" % (branch)
-    print("Executing (%s)" % (cmd))
-    try:
-        subprocess.check_call(
-            cmd, stderr=subprocess.STDOUT, shell=True, env=d_env)
-    except subprocess.CalledProcessError:
-        print("###Error in pulling workspace")
-        # Send email for build failure
-        shutil.rmtree(workspace)
-        send_email_ws(email)
-        return False
-
-    patch_ws(workspace)
+#    # Pull work space
+#    cmd = "acme nw -project %s -sb xe" % (branch)
+#    print("Executing (%s)" % (cmd))
+#    try:
+#        subprocess.check_call(
+#            cmd, stderr=subprocess.STDOUT, shell=True, env=d_env)
+#    except subprocess.CalledProcessError:
+#        print("###Error in pulling workspace")
+#        # Send email for build failure
+#        shutil.rmtree(workspace)
+#        send_email_ws(email)
+#        return False
+#
+#    patch_ws(workspace)
 
     # Create the regression workspace logs directory
     log_dir = "%s/regression/%s" % (storage, view_tag)
@@ -318,20 +322,20 @@ def run_regression(storage, branch, email):
     bugs_file_p.write(bugs_info)
     bugs_file_p.close()
 
-    # Start the build for the x86_64_binos_root.
-    # Once the binos_root is done build all ASIC builds
-    cmd = "mcp_ios_precommit -- -j16 build_x86_64_binos_root"
-    print("Executing (%s)" % (cmd))
-    os.chdir("%s/sys" % (ios_root))
-    try:
-        subprocess.check_call(
-            cmd, stderr=subprocess.STDOUT, shell=True, env=d_env)
-    except subprocess.CalledProcessError:
-        print("###Error in building binos linkfarm")
-        # Send email for build failure
-        send_email_binos_root(email, binos_root, bugs_file)
-        shutil.rmtree(workspace)
-        return False
+#    # Start the build for the x86_64_binos_root.
+#    # Once the binos_root is done build all ASIC builds
+#    cmd = "mcp_ios_precommit -- -j16 build_x86_64_binos_root"
+#    print("Executing (%s)" % (cmd))
+#    os.chdir("%s/sys" % (ios_root))
+#    try:
+#        subprocess.check_call(
+#            cmd, stderr=subprocess.STDOUT, shell=True, env=d_env)
+#    except subprocess.CalledProcessError:
+#        print("###Error in building binos linkfarm")
+#        # Send email for build failure
+#        send_email_binos_root(email, binos_root, bugs_file)
+#        shutil.rmtree(workspace)
+#        return False
 
     output = {}
     # Start the ASIC builds for the new AFD/CAD and execute the regressions
@@ -352,8 +356,8 @@ def run_regression(storage, branch, email):
 
     send_email_regression_results(email, output) 
 
-    update_current_label(label_dir, "last_label", current_label)
-    shutil.rmtree(workspace)
+#    update_current_label(label_dir, "last_label", current_label)
+#    shutil.rmtree(workspace)
     return True
 
 ######################################################################
@@ -364,6 +368,7 @@ def main():
     This is the main routine which gets invoked when the script
     is invoked to run regression from the cron job.
     '''
+    global options
     parser = OptionParser(usage="usage: %prog\n"
                           "-e <email address>\n"
                           "-s <storage>\n"
@@ -373,6 +378,9 @@ def main():
     parser.add_option("-s", "--storage", dest="storage",
                       help="Starage for the worksapce")
     parser.add_option("-b", "--branch", dest="branch", help="Branch name")
+    parser.add_option('-c', '--continue', dest='continue_run',
+                      action="store_true",
+                      help='continue from failure');
     (options, args) = parser.parse_args()
 
     email = ''

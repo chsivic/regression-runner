@@ -580,16 +580,16 @@ def main():
     # Run Valgrind and it will be attached with the email
     # Code coverage will be done separately
     env = (binos_root, asic, new_code, no_attach, cflow)
-    if not skip:
-        cleanAndBuild(env, False)
+#    if not skip:
+#        cleanAndBuild(env, False)
 
     # Run without Valgrind
     tool = (False, False)
     results = runTest(env, tool) 
     emailTestResults(env, tool, results, email, bugs, cdets, start_time)
 
-    if not after_run:
-        cleanWorkspace(env)
+#    if not after_run:
+#        cleanWorkspace(env)
     
     # Run with Valgrind
     if valgrind:
