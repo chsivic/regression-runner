@@ -202,7 +202,7 @@ class RegressionRunner(object):
         for l in output.split('\n'):
             if '|' in l:
                 key, result = l.split('|')[1:3]
-                results[key.strip()] = 'OK' if 'PASSED' in result else result.strip()
+                results[key.strip()] = result.strip()
         return results
 
 class Reporter (object):
@@ -232,18 +232,22 @@ class Reporter (object):
     
     def compose(self, results):
         body = ''
-        stats = {asic:sum(1 for res in results[asic].values() if res == 'PASSED')
+        for asic,res in results.items():
+            results[asic] = {k:'OK' if v == 'PASSED' else v for k,v in res.items()}
+        stats = {asic:sum(1 for res in results[asic].values() if res == 'OK')
             for asic in results.keys()}
-        body += "Summary:\n"
-        body += '\n'.join(
-            ["{asic}: {passed}/{total}".format(asic=asic, passed=stats[asic],
-                                               total=len(results[asic].keys()))
+        summary_format = "{:<10} : {:6}/{:5}\n"
+        body += "Summary:\n" + summary_format.format('ASIC', 'Passed', 'Total')
+        body += ''.join(
+            [summary_format.format(asic, stats[asic], len(results[asic].keys()))
             for asic in results.keys()]) + '\n'
 
+        # FIXME merge keys from multiple results[asic]
         testcases = results[results.keys()[0]].keys()
-        tbl_format = '| {:<45} | {:<25} | {:<25} |'
-        body += tbl_format.format('Testname', 'DopplerCS', 'DopplerD')+'\n'
-        body += '\n'.join([tbl_format.format(t, results['DopplerCS'][t],
+        testcases.sort()
+        tbl_format = '| {:<45} | {:<25} | {:<25} |\n'
+        body += tbl_format.format('Testname', 'DopplerCS', 'DopplerD')
+        body += ''.join([tbl_format.format(t, results['DopplerCS'][t],
                                              results['DopplerD'][t]) for t in testcases])
     
         body += """
