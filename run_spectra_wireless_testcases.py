@@ -201,8 +201,8 @@ class RegressionRunner(object):
         output = output.split('Results')[1]
         for l in output.split('\n'):
             if '|' in l:
-                results[l.split('|')[1].strip()] = l.split('|')[2].strip()
-    
+                key, result = l.split('|')[1:3]
+                results[key.strip()] = 'OK' if 'PASSED' in result else result.strip()
         return results
 
 class Reporter (object):
@@ -241,7 +241,7 @@ class Reporter (object):
             for asic in results.keys()]) + '\n'
 
         testcases = results[results.keys()[0]].keys()
-        tbl_format = '| {:<35} | {:<25} | {:<25} |'
+        tbl_format = '| {:<45} | {:<25} | {:<25} |'
         body += tbl_format.format('Testname', 'DopplerCS', 'DopplerD')+'\n'
         body += '\n'.join([tbl_format.format(t, results['DopplerCS'][t],
                                              results['DopplerD'][t]) for t in testcases])
@@ -252,10 +252,11 @@ class Reporter (object):
 
         return body
 
-
 def run():
     STORAGE = '/scratch/siche'
     WS_NAME = "mac_" + datetime.datetime.now().strftime('%Y-%m-%d')
+    EMAIL = 'siche@cisco.com'
+
     r = RegressionRunner();
     r.ws = Workspace(directory = "%s/%s" % (STORAGE, WS_NAME))
     r.prepare_ws()
@@ -269,7 +270,7 @@ def run():
                                     r.ws.get_wireless_testcases()))
         for asic in ['DopplerCS', 'DopplerD']}
 
-    r = Reporter(emails=['siche@cisco.com'])
+    r = Reporter(emails=[EMAIL])
     r.send_email("Wireless Regression Multi-Doppler Results",
                  r.compose(results))
 
