@@ -24,36 +24,43 @@ def find_files_in_dir(path, regex):
     return matched
 
 class Workspace (object):
-    ws_dir = ''
+    ws_path = ''
     binos_root = ''
     def __repr__ (self) :
         return "<Workspace of branch %s at BINOS_ROOT=%s>" % (self.branch, self.binos_root)
 
     def __init__(self, directory = '', branch = 'macallan_dev'):
-        self.ws_dir = directory
+        self.ws_path = directory
         self.branch = branch
-        self.binos_root = "%s/binos" % self.ws_dir if self.ws_dir != '' else ''
+        self.binos_root = "%s/binos" % self.ws_path if self.ws_path != '' else ''
         self.spectra_dir = self.binos_root + '/platforms/ngwc/doppler_sdk/spectra/'
 
     def pull (self):
         """Pull work space"""
         if self.branch == '': 
             raise ValueError("Branch is not set")
-        if self.ws_dir == '':
+        if self.ws_path == '':
             raise ValueError("workspace dir is not set")
 
         try:
-            if not os.path.exists(self.ws_dir):
-                os.makedirs(self.ws_dir)
-            os.chdir(self.ws_dir)
+            if not os.path.exists(self.ws_path):
+                os.makedirs(self.ws_path)
+            os.chdir(self.ws_path)
             cmd = "acme nw -project %s -sb xe" % (self.branch)
+            parent, ws_dir = self.ws_path.rsplit('/', 1)
+            cmd = "iws -l latest -t %s -xe %s" % (ws_dir, self.branch)
             print("Executing (%s)" % (cmd))
             subprocess.check_call(
                 cmd, stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError as e:
-            if e.returncode != 255:
+            if e.returncode == 1:
+                print ("iws returned 1")
+            elif e.returncode != 255:
                 print("###Error in pulling workspace", e.returncode)
                 raise
+        self.ws_path = "%s/%s" % (parent, "iws_"+ws_dir)
+        self.binos_root = "%s/binos" % self.ws_path if self.ws_path != '' else ''
+        self.spectra_dir = self.binos_root + '/platforms/ngwc/doppler_sdk/spectra/'
             
     def build (self, target = 'x86_64_binos_root'):
         if pattern_exists_in_dir('%s/BUILD_LOGS/' % self.binos_root,
@@ -64,7 +71,7 @@ class Workspace (object):
         cmd = "mcp_ios_precommit -- -j16 build_x86_64_binos_root"
         print("Executing (%s)" % (cmd))
         try:
-            os.chdir("%s/ios/sys" % (self.ws_dir))
+            os.chdir("%s/ios/sys" % (self.ws_path))
             subprocess.check_call(
                 cmd, stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError as e:
@@ -143,7 +150,7 @@ class RegressionRunner(object):
         self.ws.pull()
         self.ws.build()
         
-        self.patch_ws(self.ws.ws_dir)
+        self.patch_ws(self.ws.ws_path)
     def cleanup_results(self):
         binos_root = self.ws.binos_root
         scripts_dir = "{}/platforms/ngwc/doppler_sdk/spectra/scripts".format(binos_root)
