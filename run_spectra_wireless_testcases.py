@@ -6,6 +6,7 @@ import smtplib
 import mimetypes
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from enum import Enum
 
 def pattern_exists_in_dir(path, regex):
     regObj = re.compile(regex)
@@ -113,6 +114,9 @@ class Spectra(object):
         except subprocess.CalledProcessError as e:
             print("#### Spectra clean failed", e.returncode)
  
+class Mode(Enum):
+    DEFAULT = 1
+    FEATURE = 2
 class RegressionRunner(object):
     ws = None
     spectras = None
@@ -131,7 +135,6 @@ class RegressionRunner(object):
                 subprocess.call(cmd, stderr=subprocess.STDOUT, shell=True)
             except subprocess.CalledProcessError as e:
                 print("Error: ", e)
-
     def prepare_ws(self):
         if self.ws is None:
             raise Exception('workspace not set')
@@ -141,8 +144,6 @@ class RegressionRunner(object):
         self.ws.build()
         
         self.patch_ws(self.ws.ws_dir)
-        
-
     def cleanup_results(self):
         binos_root = self.ws.binos_root
         scripts_dir = "{}/platforms/ngwc/doppler_sdk/spectra/scripts".format(binos_root)
@@ -161,10 +162,11 @@ class RegressionRunner(object):
             shutil.rmtree(results_dir)
         os.makedirs(results_dir)
 
-    def run_test(self, asic = 'DopplerD', tests = []):
+    def run_test(self, asic = 'DopplerD', tests = [], mode=Mode.FEATURE):
         cmd = [self.test_runner_exe, '-p', '-a', asic,
-            '-t', ':'.join(tests), '-r', '"TESTMODE=FEATURE"',
+            '-t', ':'.join(tests), 
             '-b', self.ws.binos_root]
+        if mode is Mode.FEATURE : cmd += ['-r', '"TESTMODE=FEATURE"']
         print("\nExecuting(%s)" % ' '.join(cmd))
         try:
             output = ''
@@ -270,8 +272,8 @@ def run():
     map(lambda sp: sp.build(), spectras)
     r.spectras = spectras
 
-    results = {asic:r.parse_test_runner_output(r.run_test(asic,
-                                    r.ws.get_wireless_testcases()))
+    results = {asic:r.parse_test_runner_output(
+                    r.run_test(asic, r.ws.get_wireless_testcases()))
         for asic in ['DopplerCS', 'DopplerD']}
 
     r = Reporter(emails=[EMAIL])
