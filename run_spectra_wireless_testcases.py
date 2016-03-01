@@ -1,6 +1,6 @@
 #!/router/bin/python
 from __future__ import print_function
-import datetime, subprocess, os, sys
+import datetime, subprocess, os, sys, shutil
 import re
 import smtplib
 import mimetypes
@@ -283,9 +283,11 @@ def run():
                     r.run_test(asic, r.ws.get_wireless_testcases()))
         for asic in ['DopplerCS', 'DopplerD']}
 
-    r = Reporter(emails=[EMAIL])
-    r.send_email("Wireless Regression Multi-Doppler Results",
-                 r.compose(results))
+    reporter = Reporter(emails=[EMAIL])
+    reporter.send_email("Wireless Regression Multi-Doppler Results",
+                 reporter.compose(results))
+    
+    shutil.rmtree(r.ws.ws_path)
 
 if __name__ == "__main__":
     run()
