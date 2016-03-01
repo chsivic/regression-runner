@@ -665,8 +665,20 @@ def main():
             else:
                 exec_cmd = '%s/usr/binos/bin/%s' % \
                         (get_linkfarm_asic(binos_root, asic), get_dvpp_exec_name(asic))
-            os.system("%s TESTNAME=%s %s %s" % (exec_cmd, test_case, run_opts, log_redirect))
-            result = process_log_file(log_file)
+            print "Executing (%s TESTNAME=%s %s %s)" % (exec_cmd, test_case, run_opts, log_redirect)
+            try:
+                status = subprocess.check_call("%s TESTNAME=%s %s %s" % (exec_cmd,
+                                                                     test_case,
+                                                                     run_opts,
+                                                                     log_redirect),
+                                     shell=True)
+            except subprocess.CalledProcessError as e: 
+                if e.returncode == 139:
+                    result = "CRASHED"
+                else:
+                    result = process_log_file(log_file)
+            else:
+                result = process_log_file(log_file)
             test_passed = True if result == "PASSED" else False
            
         if test_passed:
