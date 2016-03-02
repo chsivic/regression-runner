@@ -8,13 +8,18 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from enum import Enum
 
-def pattern_exists_in_dir(path, regex):
-    regObj = re.compile(regex)
+def pattern_exists_in_dir(path, content_pattern, fname_pattern=''):
+    content_regObj = re.compile(content_pattern)
+    fname_regObj = re.compile(fname_pattern) if fname_pattern else None
     for root, dirs, fnames in os.walk(path):
         for fname in fnames:
-            for line in open(root+fname, 'r'):
-                if regObj.search(line):
-                    return True
+            if not fname_regObj or fname_regObj.search(fname):
+                for line in open(root+'/'+fname, 'r'):
+                    if content_regObj.search(line):
+                        print(fname)
+                        print(line)
+                        return True
+    return False
 
 def find_files_in_dir(path, regex):
     regObj = re.compile(regex)
@@ -26,10 +31,12 @@ def find_files_in_dir(path, regex):
 class Workspace (object):
     ws_path = ''
     binos_root = ''
+    label = ''
+    spectra_dir = ''
     def __repr__ (self) :
-        return "<Workspace of branch %s at BINOS_ROOT=%s>" % (self.branch, self.binos_root)
+        return "<Workspace (%s) at %s>" % (self.label if self.label else self.branch, self.ws_path)
 
-    def __init__(self, directory = '', branch = 'macallan_dev'):
+    def __init__(self, directory, branch = 'macallan_dev'):
         self.ws_path = directory
         self.branch = branch
         self.binos_root = "%s/binos" % self.ws_path if self.ws_path != '' else ''
@@ -43,12 +50,9 @@ class Workspace (object):
             raise ValueError("workspace dir is not set")
 
         try:
-            if not os.path.exists(self.ws_path):
-                os.makedirs(self.ws_path)
-            os.chdir(self.ws_path)
-            cmd = "acme nw -project %s -sb xe" % (self.branch)
             parent, ws_dir = self.ws_path.rsplit('/', 1)
-            cmd = "iws -l latest -t %s -xe %s" % (ws_dir, self.branch)
+            cmd = "iws -l latest -t %s -xe %s -d %s" % (ws_dir, self.branch,
+                                                        "/scratch/siche/")
             print("Executing (%s)" % (cmd))
             subprocess.check_call(
                 cmd, stderr=subprocess.STDOUT, shell=True)
@@ -61,6 +65,27 @@ class Workspace (object):
         self.ws_path = "%s/%s" % (parent, "iws_"+ws_dir)
         self.binos_root = "%s/binos" % self.ws_path if self.ws_path != '' else ''
         self.spectra_dir = self.binos_root + '/platforms/ngwc/doppler_sdk/spectra/'
+
+    def get_label(self):
+        """
+            read .acme_project label from .ACMEROOT/ws.lu
+            cat .ACMEROOT/ws.lu
+            binos macallan_dev/1174
+            .acme_project macallan_dev/1144
+            wcm macallan_dev/15
+            ios macallan_dev/110
+        """
+        if self.label:
+            return self.label
+        try:
+            with open("%s/%s" % (self.ws_path, ".ACMEROOT/ws.lu")) as f:
+                for l in f.read().splitlines() :
+                    if ".acme_project" in l:
+                        self.label = l.split(' ')[1]
+                        break
+        except IOError as e:
+            self.label = ''
+        return self.label
             
     def build (self, target = 'x86_64_binos_root'):
         if pattern_exists_in_dir('%s/BUILD_LOGS/' % self.binos_root,
@@ -87,6 +112,31 @@ class Workspace (object):
         return [w.replace('.py', '') for w in 
             find_files_in_dir(self.spectra_dir + '/scripts/test_suite/Wireless/',
                                  '.*.py$')]
+    def get_bugs_info(self, last_label):
+        '''
+        Get the DDTSs fixed between the current label and last label.
+        '''
+        bugs_info = ''
+        if not self.label:
+            self.get_label()
+        cmd = 'acme refpoint_list -start_ver %s -end_ver %s -comp .acme_project' % \
+                  (last_label, self.label)
+        try:
+            os.chdir(self.ws_path)
+            output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
+        except subprocess.CalledProcessError:
+            print("#### acme command to get workspace info failed")
+            return ''
+    
+        bugs_info += "Current label: %s Latest Label: %s\n" % (self.label, last_label)
+        for line in output.splitlines():
+            if "Change ID:" in line:
+                bugs_info += line.split(':')[1].rstrip() + '  by '
+            if "Created By:" in line:
+                bugs_info += line.split(':')[1].rstrip() + '\n'
+                
+        return bugs_info
+
 
 class Spectra(object):
     ws = None
@@ -100,6 +150,11 @@ class Spectra(object):
             raise Exception('workspace not set')
 
         binos_root = self.ws.binos_root
+        # Check old build log
+        if os.path.isfile("%s/logs/build.%s.log" % (self.ws.spectra_dir, self.asic)):
+            print("build.%s.log exist. Skip build" % (self.asic,))
+            return
+        
         # Now build spectra
         buildCmd = [binos_root + "/platforms/ngwc/doppler_sdk/tools/scripts/spectra_build.py", "-p",
                     "-a", self.asic, "-b", binos_root]
@@ -128,11 +183,13 @@ class RegressionRunner(object):
     ws = None
     spectras = None
     test_runner_exe = "/ws/siche-sjc/macallan/test_runner.py"
-    def __init__(self, spectras=None):
+    def __init__(self, ws=None, spectras=None):
         self.spectras = spectras
 
-    def patch_ws (self, workspace = '.'):
-        os.chdir(workspace)
+    def patch_ws (self):
+        if self.ws is None:
+            raise Exception('workspace not set')
+        os.chdir(self.ws.ws_path)
         cmds = ('patch -p1 -f < /ws/siche-sjc/macallan/WiredToWirelessBridging_CS.stanley.diff',
                 'patch -p1 -f < /ws/siche-sjc/macallan/wireless_spectra.diff',
                 'patch -p1 -f < /ws/siche-sjc/macallan/spectra_scripts.diff')
@@ -150,7 +207,7 @@ class RegressionRunner(object):
         self.ws.pull()
         self.ws.build()
         
-        self.patch_ws(self.ws.ws_path)
+        self.patch_ws()
     def cleanup_results(self):
         binos_root = self.ws.binos_root
         scripts_dir = "{}/platforms/ngwc/doppler_sdk/spectra/scripts".format(binos_root)
@@ -239,10 +296,11 @@ class Reporter (object):
 
         smtp_inst.quit()
     
-    def compose(self, results):
+    def compose(self, results, ws=None):
         body = ''
         for asic,res in results.items():
             results[asic] = {k:'OK' if v == 'PASSED' else v for k,v in res.items()}
+
         stats = {asic:sum(1 for res in results[asic].values() if res == 'OK')
             for asic in results.keys()}
         summary_format = "{:<10} : {:6}/{:5}\n"
@@ -250,6 +308,10 @@ class Reporter (object):
         body += ''.join(
             [summary_format.format(asic, stats[asic], len(results[asic].keys()))
             for asic in results.keys()]) + '\n'
+
+        if ws:
+            body += "Workspace: "+repr(ws) + '\n'
+#            body += ws.get_bugs_info("macallan_dev/1140")
 
         # FIXME merge keys from multiple results[asic]
         testcases = results[results.keys()[0]].keys()
@@ -268,7 +330,9 @@ class Reporter (object):
 def run():
     STORAGE = '/scratch/siche'
     WS_NAME = "mac_" + datetime.datetime.now().strftime('%Y-%m-%d')
-    EMAIL = 'siche@cisco.com'
+    EMAIL = 'staff.mayc@cisco.com'
+#    WS_NAME = 'macd_2016-02-28'
+#    EMAIL = 'siche@cisco.com'
 
     r = RegressionRunner();
     r.ws = Workspace(directory = "%s/%s" % (STORAGE, WS_NAME))
@@ -285,7 +349,7 @@ def run():
 
     reporter = Reporter(emails=[EMAIL])
     reporter.send_email("Wireless Regression Multi-Doppler Results",
-                 reporter.compose(results))
+                 reporter.compose(results, r.ws))
     
     shutil.rmtree(r.ws.ws_path)
 
