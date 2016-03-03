@@ -110,10 +110,10 @@ class Workspace (object):
             message = template.format(type(ex).__name__, ex.args)
             logging.warning(message)
 
-    def get_wireless_testcases(self):
+    def get_testcases_from_directory(self, directory="Wireless"):
         return [w.replace('.py', '') for w in 
-            find_files_in_dir(self.spectra_dir + '/scripts/test_suite/Wireless/',
-                                 '.*.py$')]
+            find_files_in_dir(self.spectra_dir + '/scripts/test_suite/' +
+                              directory+'/', '.*.py$')]
     def get_bugs_info(self, last_label):
         '''
         Get the DDTSs fixed between the current label and last label.
@@ -349,7 +349,8 @@ def run():
     r.spectras = spectras
 
     results = {asic:r.parse_test_runner_output(
-                    r.run_test(asic, r.ws.get_wireless_testcases()))
+                    r.run_test(asic,
+                               r.ws.get_testcases_from_directory("Wireless")))
         for asic in ['DopplerCS', 'DopplerD']}
 
     with open('/ws/siche-sjc/macallan/test_results.' + WS_NAME, 'wb') as h:
