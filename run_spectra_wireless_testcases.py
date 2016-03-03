@@ -34,6 +34,8 @@ class Workspace (object):
     label = ''
     spectra_dir = ''
     def __repr__ (self) :
+        if not self.label:
+            self.get_label()
         return "<Workspace (%s) at %s>" % (self.label if self.label else self.branch, self.ws_path)
 
     def __init__(self, directory, branch = 'macallan_dev'):
