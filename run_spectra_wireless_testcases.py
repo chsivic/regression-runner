@@ -7,6 +7,7 @@ import mimetypes
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from enum import Enum
+import logging
 
 def pattern_exists_in_dir(path, content_pattern, fname_pattern=''):
     content_regObj = re.compile(content_pattern)
@@ -16,8 +17,6 @@ def pattern_exists_in_dir(path, content_pattern, fname_pattern=''):
             if not fname_regObj or fname_regObj.search(fname):
                 for line in open(root+'/'+fname, 'r'):
                     if content_regObj.search(line):
-                        print(fname)
-                        print(line)
                         return True
     return False
 
@@ -53,14 +52,14 @@ class Workspace (object):
             parent, ws_dir = self.ws_path.rsplit('/', 1)
             cmd = "iws -l latest -t %s -xe %s -d %s" % (ws_dir, self.branch,
                                                         "/scratch/siche/")
-            print("Executing (%s)" % (cmd))
+            logging.info("Executing (%s)" % (cmd))
             subprocess.check_call(
                 cmd, stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError as e:
             if e.returncode == 1:
-                print ("iws returned 1")
+                logging.warning ("iws returned 1")
             elif e.returncode != 255:
-                print("###Error in pulling workspace", e.returncode)
+                logging.error("###Error in pulling workspace", e.returncode)
                 raise
         self.ws_path = "%s/%s" % (parent, "iws_"+ws_dir)
         self.binos_root = "%s/binos" % self.ws_path if self.ws_path != '' else ''
@@ -90,23 +89,23 @@ class Workspace (object):
     def build (self, target = 'x86_64_binos_root'):
         if pattern_exists_in_dir('%s/BUILD_LOGS/' % self.binos_root,
                 'SUCC.*x86_64_binos_root'):
-            print('x86_64_binos_root already built')
+            logging.warning('x86_64_binos_root already built')
             return
 
         cmd = "mcp_ios_precommit -- -j16 build_x86_64_binos_root"
-        print("Executing (%s)" % (cmd))
+        logging.info("Executing (%s)" % (cmd))
         try:
             os.chdir("%s/ios/sys" % (self.ws_path))
             subprocess.check_call(
                 cmd, stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError as e:
-            print("###Error in building binos linkfarm")
+            logging.error("###Error in building binos linkfarm")
             # Send email for build failure
             send_email_binos_root(email, self.binos_root, bugs_file)
         except Exception as ex:
             template = "An exception of type {0} occured. Arguments:\n{1!r}"
             message = template.format(type(ex).__name__, ex.args)
-            print(message)
+            logging.warning(message)
 
     def get_wireless_testcases(self):
         return [w.replace('.py', '') for w in 
@@ -125,7 +124,7 @@ class Workspace (object):
             os.chdir(self.ws_path)
             output = subprocess.check_output(cmd, stderr=subprocess.STDOUT, shell=True)
         except subprocess.CalledProcessError:
-            print("#### acme command to get workspace info failed")
+            logging.error("#### acme command to get workspace info failed")
             return ''
     
         bugs_info += "Current label: %s Latest Label: %s\n" % (self.label, last_label)
@@ -152,17 +151,17 @@ class Spectra(object):
         binos_root = self.ws.binos_root
         # Check old build log
         if os.path.isfile("%s/logs/build.%s.log" % (self.ws.spectra_dir, self.asic)):
-            print("build.%s.log exist. Skip build" % (self.asic,))
+            logging.warning("build.%s.log exist. Skip build" % (self.asic,))
             return
         
         # Now build spectra
         buildCmd = [binos_root + "/platforms/ngwc/doppler_sdk/tools/scripts/spectra_build.py", "-p",
                     "-a", self.asic, "-b", binos_root]
         try:
-            print("Executing (%s)" % ' '.join(buildCmd))
+            logging.info("Executing (%s)" % ' '.join(buildCmd))
             subprocess.check_call(buildCmd)
         except subprocess.CalledProcessError as e:
-            print("#### Spectra build failed", e.returncode)
+            logging.error("#### Spectra build failed", e.returncode)
    
     def clean(self):
         if self.ws is None or self.asic == '':
@@ -174,7 +173,7 @@ class Spectra(object):
         try:
             subprocess.check_call(buildCmd)
         except subprocess.CalledProcessError as e:
-            print("#### Spectra clean failed", e.returncode)
+            logging.error("#### Spectra clean failed", e.returncode)
  
 class Mode(Enum):
     DEFAULT = 1
@@ -198,12 +197,12 @@ class RegressionRunner(object):
             try:
                 subprocess.call(cmd, stderr=subprocess.STDOUT, shell=True)
             except subprocess.CalledProcessError as e:
-                print("Error: ", e)
+                logging.error("Error: ", e)
     def prepare_ws(self):
         if self.ws is None:
             raise Exception('workspace not set')
 
-        print("Workspace: {}".format(self.ws))
+        logging.info("Workspace: {}".format(self.ws))
         self.ws.pull()
         self.ws.build()
         
@@ -231,18 +230,18 @@ class RegressionRunner(object):
             '-t', ':'.join(tests), 
             '-b', self.ws.binos_root]
         if mode is Mode.FEATURE : cmd += ['-r', '"TESTMODE=FEATURE"']
-        print("\nExecuting(%s)" % ' '.join(cmd))
+        logging.info("Executing(%s)" % ' '.join(cmd))
         try:
             output = ''
             p = subprocess.Popen(cmd, stdout = subprocess.PIPE, bufsize=1, 
                       universal_newlines=True)
             with p.stdout:
                 for line in iter(p.stdout.readline, b''):
-                    print(line, end='')
+                    logging.debug(line[:-1])
                     output += line
             p.wait()
         except subprocess.CalledProcessError as e:
-            print("#### test_runner error: %s" % e)
+            logging.error("#### test_runner error: %s" % e)
      
         return output
 
@@ -328,6 +327,9 @@ class Reporter (object):
         return body
 
 def run():
+    logging.basicConfig(filename='/ws/siche-sjc/macallan/run_spectra.log',
+                        level=logging.DEBUG,
+                        format='%(asctime)s %(levelname)s:%(message)s')
     STORAGE = '/scratch/siche'
     WS_NAME = "mac_" + datetime.datetime.now().strftime('%Y-%m-%d')
     EMAIL = 'staff.mayc@cisco.com'
