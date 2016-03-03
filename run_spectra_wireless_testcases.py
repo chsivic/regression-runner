@@ -7,6 +7,7 @@ import mimetypes
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from enum import Enum
+import pickle
 import logging
 
 def pattern_exists_in_dir(path, content_pattern, fname_pattern=''):
@@ -348,6 +349,9 @@ def run():
     results = {asic:r.parse_test_runner_output(
                     r.run_test(asic, r.ws.get_wireless_testcases()))
         for asic in ['DopplerCS', 'DopplerD']}
+
+    with open('/ws/siche-sjc/macallan/test_results.' + WS_NAME, 'wb') as h:
+        pickle.dump(results, h)
 
     reporter = Reporter(emails=[EMAIL])
     reporter.send_email("Wireless Regression Multi-Doppler Results",
